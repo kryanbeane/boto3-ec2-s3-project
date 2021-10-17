@@ -68,6 +68,7 @@ def createInstance():
         subprocess.run("scp -o StrictHostKeyChecking=no -i bryankeanekeypair.pem monitor.sh ec2-user@" + ec2_ip + ":.", shell = True)
         subprocess.run("ssh -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " 'chmod 700 monitor.sh'", shell = True)
         subprocess.run("ssh -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " ' ./monitor.sh'", shell = True)
+        webbrowser.open_new_tab(ec2_ip)
         
     except Exception as error:
         print(error)
@@ -93,7 +94,7 @@ def createBucket():
         )
         get_image = "curl -O http://devops.witdemo.net/assign1.jpg "
         subprocess.run(get_image , shell=True)
-        
+
         print(response)
 
     except Exception as error:
