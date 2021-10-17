@@ -82,46 +82,19 @@ def createInstance():
 def createBucket():
     s3 = boto3.resource("s3")
     s3_client = boto3.client('s3')
-    bucket_name = 'Assignment_Bucket'
-    website_configuration = {
-        'ErrorDocument': {'Key': 'error.html'},
-        'IndexDocument': {'Suffix': 'index.html'},
-    }
-
-    img = "curl -O http://devops.witdemo.net/assign1.jpg"
-    subprocess.run(img , shell=True)
-
     try:
         response = s3.create_bucket(
-            Bucket=bucket_name, 
-            CreateBucketConfiguration={'LocationConstraint': 'eu-west-1'},
+            Bucket='bryan-keane-assignment-bucket',
+            CreateBucketConfiguration={
+                'LocationConstraint': 'eu-west-1'
+
+            },
             ACL='public-read'
         )
-
-        response = s3_client.put_bucket_tagging(
-            Bucket = bucket_name,
-            Tagging={
-                'TagSet': [
-                    {
-                        'Key': 'Name',
-                        'Value': 'Assignment S3 Bucket'
-                    },
-                ]
-            }
-        )
-
-        s3_client.put_bucket_website(Bucket=bucket_name, WebsiteConfiguration=website_configuration)
-        s3_client.upload_file(img, bucket_name,'BucektName', ExtraArgs={'ACL':'public-read'})
-        s3_client.upload_file('index.html', bucket_name,'index.html', ExtraArgs={'ContentType': 'text/html','ACL':'public-read'})
-
-        print (response)
-
-        #Get the endpoint URL
-        location = boto3.client('s3').get_bucket_location(Bucket=bucket_name)['LocationConstraint']
-        url = "http://%s.s3-website-%s.amazonaws.com" % (bucket_name, location)
-        print(url)
-        webbrowser.open_new_tab(url)
-
+        get_image = "curl -O http://devops.witdemo.net/assign1.jpg "
+        subprocess.run(get_image , shell=True)
+        
+        print(response)
 
     except Exception as error:
         print (error)
