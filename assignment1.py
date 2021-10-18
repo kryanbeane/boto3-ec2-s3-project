@@ -2,9 +2,10 @@
 # Setup
 import sys
 import boto3
-import requests
 import subprocess
 import webbrowser
+import urllib.request
+
 
 # Try later to automatically fetch newest AMI Id
 
@@ -36,16 +37,12 @@ def createInstance():
                 echo '<html>' > index.html
                 echo 'Private IP address: ' >> index.html
                 curl -s http://169.254.169.254/latest/meta-data/local-ipv4>> index.html
-                echo '    ' >> index.html
                 echo 'Public IP address: ' >> index.html 
                 curl -s http://169.254.169.254/latest/meta-data/public-ipv4 >> index.html
-                echo '    ' >> index.html
                 echo 'Instance type: ' >> index.html
                 curl -s http://169.254.169.254/latest/meta-data/instance-type >> index.html
-                echo '    ' >> index.html
                 echo 'Instance ID: ' >> index.html
                 curl -s http://169.254.169.254/latest/meta-data/instance-id >> index.html
-                echo '    ' >> index.html
                 cp index.html /var/www/html/index.html
                 ''',
             TagSpecifications = [
@@ -66,8 +63,9 @@ def createInstance():
         newInstance[0].reload()
         ec2_ip = newInstance[0].public_ip_address
         subprocess.run("scp -o StrictHostKeyChecking=no -i bryankeanekeypair.pem monitor.sh ec2-user@" + ec2_ip + ":.", shell = True)
-        subprocess.run("ssh -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " 'chmod 700 monitor.sh'", shell = True)
-        subprocess.run("ssh -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " ' ./monitor.sh'", shell = True)
+        subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " 'chmod 700 monitor.sh'", shell = True)
+        subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " ' ./monitor.sh'", shell = True)
+        print('Opening webpage...')
         webbrowser.open_new_tab(ec2_ip)
         
     except Exception as error:
@@ -83,22 +81,41 @@ def createInstance():
 def createBucket():
     s3 = boto3.resource("s3")
     s3_client = boto3.client('s3')
+    bucket_name = 'bryan-keane-assignment-bucket'
+
     try:
-        response = s3.create_bucket(
-            Bucket='bryan-keane-assignment-bucket',
+        new_bucket = s3.create_bucket(
+            Bucket=bucket_name,
             CreateBucketConfiguration={
                 'LocationConstraint': 'eu-west-1'
 
             },
             ACL='public-read'
         )
-        get_image = "curl -O http://devops.witdemo.net/assign1.jpg "
-        subprocess.run(get_image , shell=True)
-
-        print(response)
+        print(new_bucket)
 
     except Exception as error:
-        print (error)
+        print('An error occurred during S3 Bucket creation. Error: ')
+        print(error)
 
+    
+    try:
+        # Save image from URL
+        urllib.request.urlretrieve("http://devops.witdemo.net/assign1.jpg", "assignmentimg.jpg")
+
+        s3.Bucket(bucket_name).put_object(
+            Key='assignmentimg.jpg', 
+            Body=dec,
+            ContentType='image/png',
+            ACL='public-read'
+        )
+
+        # Removes file after insertion
+        # Code found @ https://stackoverflow.com/questions/17358722/python-3-how-to-delete-images-in-a-folder
+        os.remove(file) for file in os.listdir('path/to/directory') if file.endswith('.jpg')
+        
+    except Exception as error:
+        print('An error occurred during bucket object insertion. Error: ')
+        print (error)
 
 createBucket()
