@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # Setup
+import os
 import sys
 import boto3
 import subprocess
 import webbrowser
 import urllib.request
-
 
 # Try later to automatically fetch newest AMI Id
 
@@ -83,39 +83,34 @@ def createBucket():
     s3_client = boto3.client('s3')
     bucket_name = 'bryan-keane-assignment-bucket'
 
+    ##### Create the S3 Bucket #####
+
     try:
         new_bucket = s3.create_bucket(
             Bucket=bucket_name,
-            CreateBucketConfiguration={
-                'LocationConstraint': 'eu-west-1'
-
-            },
+            CreateBucketConfiguration={'LocationConstraint': 'eu-west-1'},
             ACL='public-read'
         )
+        print('Bucket successfully created.')
         print(new_bucket)
 
     except Exception as error:
         print('An error occurred during S3 Bucket creation. Error: ')
         print(error)
 
+    ##### Upload image to S3 Bucket #####
     
     try:
         # Save image from URL
-        urllib.request.urlretrieve("http://devops.witdemo.net/assign1.jpg", "assignmentimg.jpg")
+        subprocess.run("curl http://devops.witdemo.net/assign1.jpg > assign1.jpg",shell=True)
 
-        s3.Bucket(bucket_name).put_object(
-            Key='assignmentimg.jpg', 
-            Body=dec,
-            ContentType='image/png',
-            ACL='public-read'
-        )
-
-        # Removes file after insertion
-        # Code found @ https://stackoverflow.com/questions/17358722/python-3-how-to-delete-images-in-a-folder
-        os.remove(file) for file in os.listdir('path/to/directory') if file.endswith('.jpg')
+        # Sets directory to directory of python file
+        object_name = ( os.path.dirname(os.path.realpath(__file__)) )+'/assign1.jpg'
+        s3.Object(bucket_name, object_name).put(Body=open(object_name, 'rb'))
+        print('Bucket now populated with an object.')
         
     except Exception as error:
         print('An error occurred during bucket object insertion. Error: ')
-        print (error)
+        print(error)
 
 createBucket()
