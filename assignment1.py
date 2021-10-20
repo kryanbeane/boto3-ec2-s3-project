@@ -14,6 +14,7 @@ def createInstance():
     try:
         print('Starting Instance...')
 
+        ec2_client = boto3.client('ec2')
         ec2 = boto3.resource('ec2')
         # Creates a list: newInstance, containing the newly created instance
         newInstance = ec2.create_instances(
@@ -60,16 +61,32 @@ def createInstance():
         
         newInstance[0].wait_until_running()
         print('Instance running ~(˘▾˘~)')
+
+    except Exception as error:
+        print('An error occurred during EC2 Instance creation.')
+        print(error)
+    
+    try:
+        # Reloads the instance and assigns the intance's ip to ec2_ip
         newInstance[0].reload()
         ec2_ip = newInstance[0].public_ip_address
+
+        # Waits until web server is running to copy monitor.sh over and ssh in
+        print('Please wait while the web server launches...')
+        waiter = ec2_client.get_waiter('instance_status_ok')
+        waiter.wait(InstanceIds=[newInstance[0].instance_id])
         subprocess.run("scp -o StrictHostKeyChecking=no -i bryankeanekeypair.pem monitor.sh ec2-user@" + ec2_ip + ":.", shell = True)
         subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " 'chmod 700 monitor.sh'", shell = True)
         subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " ' ./monitor.sh'", shell = True)
+
+        # Launches web browser with public ip opened
         print('Opening webpage...')
         webbrowser.open_new_tab(ec2_ip)
-        
+
     except Exception as error:
-        print(error)
+        print('An error occurred while  ')
+        
+
 
 #def getNewestAMI():
 #    client = boto3.client('ssm', region_name='eu-west-1a')
@@ -148,6 +165,5 @@ def createBucket():
         print('Bucket website configuration failed.')
         print(error)
 
-
-
+createInstance()
 createBucket()
