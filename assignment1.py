@@ -79,38 +79,75 @@ def createInstance():
 #    return result['Parameter']['Value'][i:i+21]
 
 def createBucket():
+
     s3 = boto3.resource("s3")
     s3_client = boto3.client('s3')
     bucket_name = 'bryan-keane-assignment-bucket'
 
     ##### Create the S3 Bucket #####
-
     try:
+        print('Creating S3 Bucket...')
+
         new_bucket = s3.create_bucket(
             Bucket=bucket_name,
             CreateBucketConfiguration={'LocationConstraint': 'eu-west-1'},
-            ACL='public-read'
+            ACL='public-read',
         )
+
         print('Bucket successfully created.')
-        print(new_bucket)
 
     except Exception as error:
-        print('An error occurred during S3 Bucket creation. Error: ')
+        print('An error occurred during S3 Bucket creation.')
         print(error)
+
 
     ##### Upload image to S3 Bucket #####
-    
     try:
         # Save image from URL
-        subprocess.run("curl http://devops.witdemo.net/assign1.jpg > assign1.jpg",shell=True)
+        subprocess.run("curl http://devops.witdemo.net/assign1.jpg > assign1.jpg", shell=True)
+        subprocess.run("touch index.html", shell=True)
 
-        # Sets directory to directory of python file
-        object_name = ( os.path.dirname(os.path.realpath(__file__)) )+'/assign1.jpg'
-        s3.Object(bucket_name, object_name).put(Body=open(object_name, 'rb'))
-        print('Bucket now populated with an object.')
+        # Places objects onto S3 bucket
+        indexobject = 'index.html'
+        s3.Object(bucket_name, indexobject).put(
+            Body=open(indexobject, 'rb'), 
+            ContentType='text/html',
+            ACL='public-read'
+        )
+
+        jpegobject = 'assign1.jpg'
+        s3.Object(bucket_name, jpegobject).put(
+            Body=open(jpegobject, 'rb'), 
+            ContentType='image/jpeg',
+            ACL='public-read'
+        )
+        
+        subprocess.run("echo '<img src='''https://bryan-keane-assignment-bucket.s3.eu-west-1.amazonaws.com/assign1.jpg'>''' > index.html", shell=True) 
+
+        print('Bucket now populated with an objects.')
         
     except Exception as error:
-        print('An error occurred during bucket object insertion. Error: ')
+        print('An error occurred during bucket object insertion. ')
         print(error)
+
+    try:
+        # Configures bucket to now host a static website
+        website_configuration = {
+            'ErrorDocument': {'Key': 'error.html'},
+            'IndexDocument': {'Suffix': 'index.html'},
+        }
+        s3_client.put_bucket_website(
+            Bucket=bucket_name, 
+            WebsiteConfiguration=website_configuration,
+        )
+
+        print('Bucket website configuration successful.')
+        webbrowser.open_new_tab('https://bryan-keane-assignment-bucket.s3.eu-west-1.amazonaws.com/index.html')
+
+    except Exception as error:
+        print('Bucket website configuration failed.')
+        print(error)
+
+
 
 createBucket()
