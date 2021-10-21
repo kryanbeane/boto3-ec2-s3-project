@@ -1,4 +1,8 @@
-
+#!/usr/bin/env python3
+# Setup
+import os
+import sys
+import boto3
 import subprocess
 import webbrowser
 from operator import itemgetter
@@ -104,7 +108,7 @@ def create_instance():
 def create_bucket():
     s3 = boto3.resource("s3")
     s3_client = boto3.client('s3')
-    bucket_name = 'bryan-keane-assignment-bucket'
+    bucket_name = 'keane-bryan-s3'
 
     try:
         print('Creating S3 Bucket...')
@@ -114,23 +118,35 @@ def create_bucket():
             CreateBucketConfiguration={'LocationConstraint': 'eu-west-1'},
             ACL='public-read',
         )
-        
-        print('Bucket successfully created.')
 
-        s3_website_conversion()
-        populate_bucket()
+        print('Bucket successfully created.')
+    
+    except Exception as e:
+        print(e.response['Error']['Code'])
+        if e.response['Error']['Code'] == 'BucketAlreadyOwnedByYou':
+
+            txt = input('Randomise the bucket name? (y/n)')
+            if txt=='y' or txt == 'Y':
+                bucket_name = bucket_name.join(random.choices(string.ascii_uppercase + string.digits, k=N))
+
+            else: 
+                print('A bucket cannot be created with this name. Please try again.')
+                os._exit(0)
+        else:
+            print('An error has occurred while creating your S3 bucket.')
+            os._exit(0)
+
+    finally:
+        s3_website_conversion(bucket_name)
+        populate_bucket(bucket_name)
 
         print('Loading website...')
-        webbrowser.open_new_tab('https://bryan-keane-assignment-bucket.s3.eu-west-1.amazonaws.com/index.html')
+        webbrowser.open_new_tab('https://{}.s3.eu-west-1.amazonaws.com/index.html'.format(bucket_name))
 
-    except Exception as e:
-        print('An error occurred during S3 Bucket creation.')
-        print(e)
 
-def populate_bucket():
+def populate_bucket(bucket_name):
     s3 = boto3.resource("s3")
     s3_client = boto3.client('s3')
-    bucket_name = 'bryan-keane-assignment-bucket'
 
     try:
         # Save image from URL
@@ -152,15 +168,16 @@ def populate_bucket():
             ContentType='image/jpeg',
             ACL='public-read'
         )
-        
-        subprocess.run("echo '<img src='''https://bryan-keane-assignment-bucket.s3.eu-west-1.amazonaws.com/assign1.jpg'>''' > index.html", shell=True) 
+        subprocess.run("echo '<img src='''https://{}.s3.eu-west-1.amazonaws.com/assign1.jpg'>''' > index.html".format(bucket_name), shell=True) 
         print('Bucket now populated with objects.')
         
     except Exception as e:
         print('An error occurred during bucket object insertion. ')
         print(e)
 
-def s3_website_conversion():
+def s3_website_conversion(bucket_name):
+    s3 = boto3.resource("s3")
+    s3_client = boto3.client('s3')
     try:
         website_configuration = {
             'ErrorDocument': {'Key': 'error.html'},
