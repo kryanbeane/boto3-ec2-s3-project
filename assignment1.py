@@ -5,21 +5,47 @@ import sys
 import boto3
 import subprocess
 import webbrowser
-import urllib.request
+from operator import itemgetter
 
-# Try later to automatically fetch newest AMI Id
+def fetch_latest_ami():
+    ec2_client = boto3.client('ec2')
+    try:
+        response = ec2_client.describe_images(
+            Filters=[
+                {
+                    'Name': 'description',
+                    'Values': [
+                        'Amazon Linux AMI*',
+                    ]
+                },
+            ],
+            Owners=[
+                'amazon'
+            ]
+        )
+        # Sort by creation date and description
+        image_details = sorted(
+            response['Images'],
+            key=itemgetter('CreationDate'),
+            reverse=True
+            )
+        return image_details[0]['ImageId']
+
+    except Exception as e:
+        print('An error occurred while fetching Amazon Linux 2 AMI.')
+        print(e)
+        
 
 # Launch an EC2 Instance
 def createInstance():
+    ec2_client = boto3.client('ec2')
+    ec2 = boto3.resource('ec2')
     try:
         print('Starting Instance...')
-
-        ec2_client = boto3.client('ec2')
-        ec2 = boto3.resource('ec2')
         # Creates a list: newInstance, containing the newly created instance
         newInstance = ec2.create_instances(
             # Amazon Linux 2 AMI
-            ImageId = 'ami-05cd35b907b4ffe77', 
+            ImageId = fetch_latest_ami(), 
             MinCount = 1,
             MaxCount = 1,
             InstanceType = 't2.nano',
@@ -62,9 +88,9 @@ def createInstance():
         newInstance[0].wait_until_running()
         print('Instance running ~(˘▾˘~)')
 
-    except Exception as error:
+    except Exception as e:
         print('An error occurred during EC2 Instance creation.')
-        print(error)
+        print(e)
     
     try:
         # Reloads the instance and assigns the intance's ip to ec2_ip
@@ -83,20 +109,11 @@ def createInstance():
         print('Opening webpage...')
         webbrowser.open_new_tab(ec2_ip)
 
-    except Exception as error:
-        print('An error occurred while  ')
-        
-
-
-#def getNewestAMI():
-#    client = boto3.client('ssm', region_name='eu-west-1a')
-#    result = client.get_parameter(Name='/aws/service/ecs/optimized-ami/amazon-linux-2/recommended')
-#    values = result['Parameter']['Value']
-#    i = values.find('"image_id":"') + 12
-#    return result['Parameter']['Value'][i:i+21]
+    except Exception as e:
+        print('An error occurred while setting up monitoring.')#
+        print(e)
 
 def createBucket():
-
     s3 = boto3.resource("s3")
     s3_client = boto3.client('s3')
     bucket_name = 'bryan-keane-assignment-bucket'
@@ -110,12 +127,14 @@ def createBucket():
             CreateBucketConfiguration={'LocationConstraint': 'eu-west-1'},
             ACL='public-read',
         )
-
         print('Bucket successfully created.')
 
-    except Exception as error:
-        print('An error occurred during S3 Bucket creation.')
-        print(error)
+    except Exception as e:
+        if e.response['Error']['Code'] == 'BucketAlreadyExists':
+            print('This bucket name is already in use')
+        else:
+            print('An error occurred during S3 Bucket creation.')
+
 
 
     ##### Upload image to S3 Bucket #####
@@ -124,7 +143,7 @@ def createBucket():
         subprocess.run("curl http://devops.witdemo.net/assign1.jpg > assign1.jpg", shell=True)
         subprocess.run("touch index.html", shell=True)
 
-        # Places objects onto S3 bucket
+        # Places index.html onto S3 bucket
         indexobject = 'index.html'
         s3.Object(bucket_name, indexobject).put(
             Body=open(indexobject, 'rb'), 
@@ -132,6 +151,7 @@ def createBucket():
             ACL='public-read'
         )
 
+        # Places assign1.jpg onto S3 bucket
         jpegobject = 'assign1.jpg'
         s3.Object(bucket_name, jpegobject).put(
             Body=open(jpegobject, 'rb'), 
@@ -140,12 +160,11 @@ def createBucket():
         )
         
         subprocess.run("echo '<img src='''https://bryan-keane-assignment-bucket.s3.eu-west-1.amazonaws.com/assign1.jpg'>''' > index.html", shell=True) 
-
-        print('Bucket now populated with an objects.')
+        print('Bucket now populated with objects.')
         
-    except Exception as error:
+    except Exception as e:
         print('An error occurred during bucket object insertion. ')
-        print(error)
+        print(e)
 
     try:
         # Configures bucket to now host a static website
@@ -161,9 +180,10 @@ def createBucket():
         print('Bucket website configuration successful.')
         webbrowser.open_new_tab('https://bryan-keane-assignment-bucket.s3.eu-west-1.amazonaws.com/index.html')
 
-    except Exception as error:
+    except Exception as e:
         print('Bucket website configuration failed.')
-        print(error)
+        print(e)
+
+
 
 createInstance()
-createBucket()
