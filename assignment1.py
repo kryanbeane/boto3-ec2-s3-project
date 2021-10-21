@@ -1,43 +1,31 @@
-#!/usr/bin/env python3
-# Setup
-import os
-import sys
-import boto3
+
 import subprocess
 import webbrowser
 from operator import itemgetter
+from datetime import datetime
 
 def fetch_latest_ami():
     ec2_client = boto3.client('ec2')
     try:
         response = ec2_client.describe_images(
-            Filters=[
-                {
-                    'Name': 'description',
-                    'Values': [
-                        'Amazon Linux AMI*',
-                    ]
-                },
-            ],
-            Owners=[
-                'amazon'
-            ]
+            Filters=[{'Name':'name','Values':['amzn2-ami-hvm-2.0.????????-x86_64-gp2']}],
+            Owners=['amazon']   
         )
         # Sort by creation date and description
         image_details = sorted(
             response['Images'],
             key=itemgetter('CreationDate'),
             reverse=True
-            )
-        return image_details[0]['ImageId']
+        )
+        ami = image_details[0]['ImageId']
+        print('Most recent AMI found:', ami)
+        return ami
 
     except Exception as e:
-        print('An error occurred while fetching Amazon Linux 2 AMI.')
+        print('An error occurred while fetching the most recent Amazon Linux 2 AMI.')
         print(e)
         
-
-# Launch an EC2 Instance
-def createInstance():
+def create_instance():
     ec2_client = boto3.client('ec2')
     ec2 = boto3.resource('ec2')
     try:
@@ -101,9 +89,9 @@ def createInstance():
         print('Please wait while the web server launches...')
         waiter = ec2_client.get_waiter('instance_status_ok')
         waiter.wait(InstanceIds=[newInstance[0].instance_id])
-        subprocess.run("scp -o StrictHostKeyChecking=no -i bryankeanekeypair.pem monitor.sh ec2-user@" + ec2_ip + ":.", shell = True)
-        subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " 'chmod 700 monitor.sh'", shell = True)
-        subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " ' ./monitor.sh'", shell = True)
+        subprocess.run("scp -o StrictHostKeyChecking=no -i bryankeanekeypair.pem monitor.sh ec2-user@" + ec2_ip + ":.", shell=True)
+        subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " 'chmod 700 monitor.sh'", shell=True)
+        subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " ' ./monitor.sh'", shell=True)
 
         # Launches web browser with public ip opened
         print('Opening webpage...')
@@ -113,12 +101,11 @@ def createInstance():
         print('An error occurred while setting up monitoring.')#
         print(e)
 
-def createBucket():
+def create_bucket():
     s3 = boto3.resource("s3")
     s3_client = boto3.client('s3')
     bucket_name = 'bryan-keane-assignment-bucket'
 
-    ##### Create the S3 Bucket #####
     try:
         print('Creating S3 Bucket...')
 
@@ -127,17 +114,24 @@ def createBucket():
             CreateBucketConfiguration={'LocationConstraint': 'eu-west-1'},
             ACL='public-read',
         )
+        
         print('Bucket successfully created.')
 
+        s3_website_conversion()
+        populate_bucket()
+
+        print('Loading website...')
+        webbrowser.open_new_tab('https://bryan-keane-assignment-bucket.s3.eu-west-1.amazonaws.com/index.html')
+
     except Exception as e:
-        if e.response['Error']['Code'] == 'BucketAlreadyExists':
-            print('This bucket name is already in use')
-        else:
-            print('An error occurred during S3 Bucket creation.')
+        print('An error occurred during S3 Bucket creation.')
+        print(e)
 
+def populate_bucket():
+    s3 = boto3.resource("s3")
+    s3_client = boto3.client('s3')
+    bucket_name = 'bryan-keane-assignment-bucket'
 
-
-    ##### Upload image to S3 Bucket #####
     try:
         # Save image from URL
         subprocess.run("curl http://devops.witdemo.net/assign1.jpg > assign1.jpg", shell=True)
@@ -166,24 +160,22 @@ def createBucket():
         print('An error occurred during bucket object insertion. ')
         print(e)
 
+def s3_website_conversion():
     try:
-        # Configures bucket to now host a static website
         website_configuration = {
             'ErrorDocument': {'Key': 'error.html'},
             'IndexDocument': {'Suffix': 'index.html'},
         }
+
         s3_client.put_bucket_website(
             Bucket=bucket_name, 
             WebsiteConfiguration=website_configuration,
         )
 
         print('Bucket website configuration successful.')
-        webbrowser.open_new_tab('https://bryan-keane-assignment-bucket.s3.eu-west-1.amazonaws.com/index.html')
 
     except Exception as e:
         print('Bucket website configuration failed.')
-        print(e)
+        print(e)    
 
-
-
-createInstance()
+create_bucket()
