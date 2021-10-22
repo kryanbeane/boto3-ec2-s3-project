@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 # Setup
-import os
-import sys
-import boto3
-import subprocess
-import webbrowser
+import os, sys, boto3, subprocess, webbrowser, random, string
 from operator import itemgetter
-from datetime import datetime
-import random
-import string
 
 def fetch_latest_ami():
     ec2_client = boto3.client('ec2')
@@ -105,20 +98,20 @@ def launch_instance():
                 }
             ]
         )
-        
+        # Send text message notification using SNS to remind me to terminate the EC2 Instance
+        send_sns_text_msg('You just launched an instance, dont forget to terminate it when youre finished.')
+
         newInstance[0].wait_until_running()
         print('Instance running ~(˘▾˘~)')
-        send_sns_text_msg()
         return newInstance
 
     except Exception as e:
         print('An error occurred during EC2 Instance creation.')
         print(e)
 
-def create_bucket():
+def create_bucket(bucket_name):
     s3 = boto3.resource("s3")
     s3_client = boto3.client('s3')
-    bucket_name = 'keane-bryan-s3'
 
     try:
         print('Creating S3 Bucket...')
@@ -130,28 +123,32 @@ def create_bucket():
         )
 
         print('Bucket successfully created.')
+
+        s3_website_conversion(bucket_name)
+        populate_bucket(bucket_name)
+
+        # Send text message notification using SNS to remind me to terminate the S3 Bucket
+        #send_sns_text_msg('You just launched an S3 bucket, dont forget to terminate it when youre finished.')
+                
+        print('Loading website...')
+        webbrowser.open_new_tab('https://{}.s3.eu-west-1.amazonaws.com/index.html'.format(bucket_name))
     
     except Exception as e:
-        print('The bucket name "keane-bryan-s3" already exists')
-        if e.response['Error']['Code'] == 'BucketAlreadyOwnedByYou':
 
+        print('The bucket name already exists')
+        if e.response['Error']['Code'] == 'BucketAlreadyOwnedByYou':
             txt = input('Randomise the bucket name? (y/n)')
+
             if txt=='y' or txt == 'Y':
-                bucket_name = bucket_name.join(random.choices(string.ascii_uppercase + string.digits, k=N))
-                print(bucket_name)
+                bucket_name2 = bucket_name.join(random.choices(string.ascii_lowercase + string.digits, k=2))
+                create_bucket(bucket_name2)
+
             else: 
                 print('A bucket cannot be created with this name. Please try again.')
                 os._exit(0)
         else:
             print('An error has occurred while creating your S3 bucket.')
             os._exit(0)
-
-    finally:
-        s3_website_conversion(bucket_name)
-        populate_bucket(bucket_name)
-
-        print('Loading website...')
-        webbrowser.open_new_tab('https://{}.s3.eu-west-1.amazonaws.com/index.html'.format(bucket_name))
 
 def populate_bucket(bucket_name):
     s3 = boto3.resource("s3")
@@ -206,34 +203,46 @@ def s3_website_conversion(bucket_name):
 
 def sns_topic_setup(name):
     sns = boto3.resource('sns')
-    topic = sns.create_topic(Name=name)
-    return topic
+    try:
+        topic = sns.create_topic(Name=name)
+        return topic
+    except Exception as e:
+        print('An error has occurred while setting up your topic.')
+        print(e)
 
 def sns_sub_to_topic(topic, protocol, endpoint):
-    subscription=topic.subscribe(
-        Protocol=protocol,
-        Endpoint=endpoint,
-        ReturnSubscriptionArn=True
-    )
-    return subscription
+    try:
+        subscription=topic.subscribe(
+            Protocol=protocol,
+            Endpoint=endpoint,
+            ReturnSubscriptionArn=True
+        )
+        return subscription
+    except Exception as e:
+        print('An error has occurred while subscribing to your chosen topic.')
+        print(e)
 
 def publish_text_message(number, msg):
     sns = boto3.resource('sns')
-    response = sns.meta.client.publish(
-        PhoneNumber=number,
-        Message=msg
-    )
-    message_id=response['MessageId']
-
-def send_sns_text_msg():
     try:
-        topic=sns_topic_setup('test_topic')
-        number = '+353851791723'
-        number_sub=sns_sub_to_topic(topic, 'sms', number)
-        publish_text_message(number, 'You have an instance running, dont forget to terminate it!')
-    
+        response = sns.meta.client.publish(
+            PhoneNumber=number,
+            Message=msg
+        )
+        message_id=response['MessageId']
     except Exception as e:
-        print('An error has occured while launching your instance.')
+        print('An error has occured while publishing your text message.')
         print(e)
 
-instance_setup()
+def send_sns_text_msg(msg):
+    try:
+        topic=sns_topic_setup('Assignment_Topic')
+        number = '+353851791723'
+        number_sub=sns_sub_to_topic(topic, 'sms', number)
+        publish_text_message(number, msg)
+    
+    except Exception as e:
+        print('An error has occured while sending your text message.')
+        print(e)
+
+create_bucket('keane-bryan-s3')
