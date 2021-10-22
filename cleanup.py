@@ -13,7 +13,7 @@ def clean_ec2s():
     except Exception as e:
         print('Error deleting instances')
         print(e)
-    print('No instances to delete')
+    print('No more instances to delete')
 
 def clean_s3s():
     try:
@@ -31,7 +31,7 @@ def clean_s3s():
     except Exception as e:
         print('No buckets to delete!')
         print(e)
-    print('No buckets to delete')
+    print('No more buckets to delete')
 
 clean_s3s()
 clean_ec2s()

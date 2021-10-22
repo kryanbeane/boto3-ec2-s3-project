@@ -7,6 +7,8 @@ import subprocess
 import webbrowser
 from operator import itemgetter
 from datetime import datetime
+import random
+import string
 
 def fetch_latest_ami():
     ec2_client = boto3.client('ec2')
@@ -29,9 +31,36 @@ def fetch_latest_ami():
         print('An error occurred while fetching the most recent Amazon Linux 2 AMI.')
         print(e)
         
-def create_instance():
+def instance_setup():
     ec2_client = boto3.client('ec2')
     ec2 = boto3.resource('ec2')
+    newInstance = launch_instance()
+
+    try:
+        # Reloads the instance and assigns the intance's ip to ec2_ip
+        newInstance[0].reload()
+        ec2_ip = newInstance[0].public_ip_address
+
+        # Waits until web server is running to copy monitor.sh over and ssh in
+        print('Please wait while the web server launches...')
+        waiter = ec2_client.get_waiter('instance_status_ok')
+        waiter.wait(InstanceIds=[newInstance[0].instance_id])
+        subprocess.run("scp -o StrictHostKeyChecking=no -i bryankeanekeypair.pem monitor.sh ec2-user@" + ec2_ip + ":.", shell=True)
+        subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " 'chmod 700 monitor.sh'", shell=True)
+        subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " ' ./monitor.sh'", shell=True)
+
+        # Launches web browser with public ip opened
+        print('Opening webpage...')
+        webbrowser.open_new_tab(ec2_ip)
+
+    except Exception as e:
+        print('An error occurred while setting up monitoring.')#
+        print(e)
+
+def launch_instance():
+    ec2_client = boto3.client('ec2')
+    ec2 = boto3.resource('ec2')
+
     try:
         print('Starting Instance...')
         # Creates a list: newInstance, containing the newly created instance
@@ -79,30 +108,11 @@ def create_instance():
         
         newInstance[0].wait_until_running()
         print('Instance running ~(˘▾˘~)')
+        send_sns_text_msg()
+        return newInstance
 
     except Exception as e:
         print('An error occurred during EC2 Instance creation.')
-        print(e)
-    
-    try:
-        # Reloads the instance and assigns the intance's ip to ec2_ip
-        newInstance[0].reload()
-        ec2_ip = newInstance[0].public_ip_address
-
-        # Waits until web server is running to copy monitor.sh over and ssh in
-        print('Please wait while the web server launches...')
-        waiter = ec2_client.get_waiter('instance_status_ok')
-        waiter.wait(InstanceIds=[newInstance[0].instance_id])
-        subprocess.run("scp -o StrictHostKeyChecking=no -i bryankeanekeypair.pem monitor.sh ec2-user@" + ec2_ip + ":.", shell=True)
-        subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " 'chmod 700 monitor.sh'", shell=True)
-        subprocess.run("ssh -o StrictHostKeyChecking=no -i bryankeanekeypair.pem ec2-user@" + ec2_ip + " ' ./monitor.sh'", shell=True)
-
-        # Launches web browser with public ip opened
-        print('Opening webpage...')
-        webbrowser.open_new_tab(ec2_ip)
-
-    except Exception as e:
-        print('An error occurred while setting up monitoring.')#
         print(e)
 
 def create_bucket():
@@ -122,13 +132,13 @@ def create_bucket():
         print('Bucket successfully created.')
     
     except Exception as e:
-        print(e.response['Error']['Code'])
+        print('The bucket name "keane-bryan-s3" already exists')
         if e.response['Error']['Code'] == 'BucketAlreadyOwnedByYou':
 
             txt = input('Randomise the bucket name? (y/n)')
             if txt=='y' or txt == 'Y':
                 bucket_name = bucket_name.join(random.choices(string.ascii_uppercase + string.digits, k=N))
-
+                print(bucket_name)
             else: 
                 print('A bucket cannot be created with this name. Please try again.')
                 os._exit(0)
@@ -142,7 +152,6 @@ def create_bucket():
 
         print('Loading website...')
         webbrowser.open_new_tab('https://{}.s3.eu-west-1.amazonaws.com/index.html'.format(bucket_name))
-
 
 def populate_bucket(bucket_name):
     s3 = boto3.resource("s3")
@@ -195,4 +204,36 @@ def s3_website_conversion(bucket_name):
         print('Bucket website configuration failed.')
         print(e)    
 
-create_bucket()
+def sns_topic_setup(name):
+    sns = boto3.resource('sns')
+    topic = sns.create_topic(Name=name)
+    return topic
+
+def sns_sub_to_topic(topic, protocol, endpoint):
+    subscription=topic.subscribe(
+        Protocol=protocol,
+        Endpoint=endpoint,
+        ReturnSubscriptionArn=True
+    )
+    return subscription
+
+def publish_text_message(number, msg):
+    sns = boto3.resource('sns')
+    response = sns.meta.client.publish(
+        PhoneNumber=number,
+        Message=msg
+    )
+    message_id=response['MessageId']
+
+def send_sns_text_msg():
+    try:
+        topic=sns_topic_setup('test_topic')
+        number = '+353851791723'
+        number_sub=sns_sub_to_topic(topic, 'sms', number)
+        publish_text_message(number, 'You have an instance running, dont forget to terminate it!')
+    
+    except Exception as e:
+        print('An error has occured while launching your instance.')
+        print(e)
+
+instance_setup()
